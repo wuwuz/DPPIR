@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package query;
+
+option go_package = "example.com/query";
+
+service QueryService {
+    rpc QueryDatabase (SimpleQuery) returns (QueryResponse) {}
+}
+
+message SimpleQuery {
+    int32 Index = 1;
+}
+
+message QueryResponse {
+    int32 Value = 1;
+}
