@@ -5,7 +5,9 @@ package query;
 option go_package = "example.com/query";
 
 service QueryService {
-    rpc QueryDatabase (SimpleQuery) returns (QueryResponse) {}
+    //rpc QueryDatabase (SimpleQuery) returns (QueryResponse) {}
+    rpc SingleQuery (CuckooBucketQuery) returns (CuckooBucketResponse) {}
+    rpc ContinuousQuery (stream CuckooBucketQuery) returns (stream CuckooBucketResponse) {}
 }
 
 message SimpleQuery {
@@ -14,4 +16,12 @@ message SimpleQuery {
 
 message QueryResponse {
     int32 Value = 1;
+}
+
+message CuckooBucketQuery {
+    uint64 BucketId = 1;
+}
+
+message CuckooBucketResponse {
+    repeated uint64 Bucket = 1;
 }

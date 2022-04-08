@@ -22,7 +22,9 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type QueryServiceClient interface {
-	QueryDatabase(ctx context.Context, in *SimpleQuery, opts ...grpc.CallOption) (*QueryResponse, error)
+	//rpc QueryDatabase (SimpleQuery) returns (QueryResponse) {}
+	SingleQuery(ctx context.Context, in *CuckooBucketQuery, opts ...grpc.CallOption) (*CuckooBucketResponse, error)
+	ContinuousQuery(ctx context.Context, opts ...grpc.CallOption) (QueryService_ContinuousQueryClient, error)
 }
 
 type queryServiceClient struct {
@@ -33,20 +35,53 @@ func NewQueryServiceClient(cc grpc.ClientConnInterface) QueryServiceClient {
 	return &queryServiceClient{cc}
 }
 
-func (c *queryServiceClient) QueryDatabase(ctx context.Context, in *SimpleQuery, opts ...grpc.CallOption) (*QueryResponse, error) {
-	out := new(QueryResponse)
-	err := c.cc.Invoke(ctx, "/query.QueryService/QueryDatabase", in, out, opts...)
+func (c *queryServiceClient) SingleQuery(ctx context.Context, in *CuckooBucketQuery, opts ...grpc.CallOption) (*CuckooBucketResponse, error) {
+	out := new(CuckooBucketResponse)
+	err := c.cc.Invoke(ctx, "/query.QueryService/SingleQuery", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
+func (c *queryServiceClient) ContinuousQuery(ctx context.Context, opts ...grpc.CallOption) (QueryService_ContinuousQueryClient, error) {
+	stream, err := c.cc.NewStream(ctx, &QueryService_ServiceDesc.Streams[0], "/query.QueryService/ContinuousQuery", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &queryServiceContinuousQueryClient{stream}
+	return x, nil
+}
+
+type QueryService_ContinuousQueryClient interface {
+	Send(*CuckooBucketQuery) error
+	Recv() (*CuckooBucketResponse, error)
+	grpc.ClientStream
+}
+
+type queryServiceContinuousQueryClient struct {
+	grpc.ClientStream
+}
+
+func (x *queryServiceContinuousQueryClient) Send(m *CuckooBucketQuery) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *queryServiceContinuousQueryClient) Recv() (*CuckooBucketResponse, error) {
+	m := new(CuckooBucketResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // QueryServiceServer is the server API for QueryService service.
 // All implementations must embed UnimplementedQueryServiceServer
 // for forward compatibility
 type QueryServiceServer interface {
-	QueryDatabase(context.Context, *SimpleQuery) (*QueryResponse, error)
+	//rpc QueryDatabase (SimpleQuery) returns (QueryResponse) {}
+	SingleQuery(context.Context, *CuckooBucketQuery) (*CuckooBucketResponse, error)
+	ContinuousQuery(QueryService_ContinuousQueryServer) error
 	mustEmbedUnimplementedQueryServiceServer()
 }
 
@@ -54,8 +89,11 @@ type QueryServiceServer interface {
 type UnimplementedQueryServiceServer struct {
 }
 
-func (UnimplementedQueryServiceServer) QueryDatabase(context.Context, *SimpleQuery) (*QueryResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method QueryDatabase not implemented")
+func (UnimplementedQueryServiceServer) SingleQuery(context.Context, *CuckooBucketQuery) (*CuckooBucketResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SingleQuery not implemented")
+}
+func (UnimplementedQueryServiceServer) ContinuousQuery(QueryService_ContinuousQueryServer) error {
+	return status.Errorf(codes.Unimplemented, "method ContinuousQuery not implemented")
 }
 func (UnimplementedQueryServiceServer) mustEmbedUnimplementedQueryServiceServer() {}
 
@@ -70,22 +108,48 @@ func RegisterQueryServiceServer(s grpc.ServiceRegistrar, srv QueryServiceServer)
 	s.RegisterService(&QueryService_ServiceDesc, srv)
 }
 
-func _QueryService_QueryDatabase_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(SimpleQuery)
+func _QueryService_SingleQuery_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CuckooBucketQuery)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(QueryServiceServer).QueryDatabase(ctx, in)
+		return srv.(QueryServiceServer).SingleQuery(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/query.QueryService/QueryDatabase",
+		FullMethod: "/query.QueryService/SingleQuery",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(QueryServiceServer).QueryDatabase(ctx, req.(*SimpleQuery))
+		return srv.(QueryServiceServer).SingleQuery(ctx, req.(*CuckooBucketQuery))
 	}
 	return interceptor(ctx, in, info, handler)
+}
+
+func _QueryService_ContinuousQuery_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(QueryServiceServer).ContinuousQuery(&queryServiceContinuousQueryServer{stream})
+}
+
+type QueryService_ContinuousQueryServer interface {
+	Send(*CuckooBucketResponse) error
+	Recv() (*CuckooBucketQuery, error)
+	grpc.ServerStream
+}
+
+type queryServiceContinuousQueryServer struct {
+	grpc.ServerStream
+}
+
+func (x *queryServiceContinuousQueryServer) Send(m *CuckooBucketResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *queryServiceContinuousQueryServer) Recv() (*CuckooBucketQuery, error) {
+	m := new(CuckooBucketQuery)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
 }
 
 // QueryService_ServiceDesc is the grpc.ServiceDesc for QueryService service.
@@ -96,10 +160,17 @@ var QueryService_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*QueryServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "QueryDatabase",
-			Handler:    _QueryService_QueryDatabase_Handler,
+			MethodName: "SingleQuery",
+			Handler:    _QueryService_SingleQuery_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "ContinuousQuery",
+			Handler:       _QueryService_ContinuousQuery_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+	},
 	Metadata: "query/query.proto",
 }

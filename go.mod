@@ -3,6 +3,7 @@ module query
 go 1.18
 
 require (
+	example.com/cuckoo v0.0.0-00010101000000-000000000000
 	example.com/query v0.0.0-00010101000000-000000000000
 	golang.org/x/exp v0.0.0-20191002040644-a1355ae1e2c3
 	gonum.org/v1/gonum v0.11.0
@@ -19,3 +20,5 @@ require (
 )
 
 replace example.com/query => ./query
+
+replace example.com/cuckoo => ./cuckoo
