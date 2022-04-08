@@ -6,6 +6,8 @@ import (
 	"net"
 	pb "example.com/query" 
 	"google.golang.org/grpc"
+	"example.com/cuckoo"
+	"io"
 )
 
 const (
@@ -14,15 +16,41 @@ const (
 
 type QueryServiceServer struct {
 	pb.UnimplementedQueryServiceServer
-	Database *map[int32]int32
+	//Database *map[int32]int32
+	HashTable *cuckoo.Cuckoo 
 }
 
-func (s *QueryServiceServer) QueryDatabase(ctx context.Context, index *pb.SimpleQuery) (*pb.QueryResponse, error) {
-	var id = index.GetIndex()
-	log.Printf("Received: %v", id)
-	var ret int32 = (*s.Database)[id]
-	return &pb.QueryResponse{Value: ret}, nil;
+func (s *QueryServiceServer) SingleQuery(ctx context.Context, in *pb.CuckooBucketQuery) (*pb.CuckooBucketResponse, error) {
+	bucketId := in.GetBucketId()
+	bucket := s.HashTable.GetBucketCopy(bucketId)
+
+	//var id = index.GetIndex()
+	//log.Printf("Received: %v", id)
+	//var ret int32 = (*s.Database)[id]
+	var ret = pb.CuckooBucketResponse{Bucket: bucket.Slot[0:4]}
+	return &ret, nil;
+	//return &pb.QueryResponse{Value: ret}, nil;
 }
+
+func (s *QueryServiceServer) ContinuousQuery(stream pb.QueryService_ContinuousQueryServer) error {
+	for {
+		request, err := stream.Recv()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		bucketId := request.GetBucketId()
+		bucket := s.HashTable.GetBucketCopy(bucketId)
+		var ret = pb.CuckooBucketResponse{Bucket: bucket.Slot[0:4]}
+
+		if err := stream.Send(&ret); err != nil {
+			return err
+		}
+	}
+}
+
 
 func main() {
 	lis, err := net.Listen("tcp", port)
@@ -31,14 +59,21 @@ func main() {
 	}
 
 	//var db map[int32]int32
-	db := make(map[int32]int32)
+	//db := make(map[int32]int32)
 
-	for i := int32(0); i < 100; i++ {
-		db[i] = i * 10
+	//for i := int32(0); i < 100; i++ {
+	//	db[i] = i * 10
+//	}
+
+	ht := cuckoo.NewCuckooHashTableGivenLogSize(5)
+	for i := 1; i < 100; i++ {
+		if ht.Insert(uint64(i)) == false {
+			log.Printf("Failed to insert cuckoo hash table at %v", i) 
+		}
 	}
 
 	s := grpc.NewServer() 
-	pb.RegisterQueryServiceServer(s, &QueryServiceServer{Database: &db})
+	pb.RegisterQueryServiceServer(s, &QueryServiceServer{HashTable: ht})
 	log.Printf("server listening at %v", lis.Addr()) 
 
 	if err := s.Serve(lis); err != nil {
