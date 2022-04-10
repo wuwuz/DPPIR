@@ -51,6 +51,13 @@ func (s *QueryServiceServer) ContinuousQuery(stream pb.QueryService_ContinuousQu
 	}
 }
 
+func (s *QueryServiceServer) GetHashTableInfo(ctx context.Context, in *pb.HashTableInfoQuery) (*pb.HashTableInfoResponse, error) {
+	var ret = pb.HashTableInfoResponse{Size: s.HashTable.Size, Load: s.HashTable.Load}
+	return &ret, nil;
+	//return &pb.QueryResponse{Value: ret}, nil;
+}
+
+
 
 func main() {
 	lis, err := net.Listen("tcp", port)
@@ -65,7 +72,7 @@ func main() {
 	//	db[i] = i * 10
 //	}
 
-	ht := cuckoo.NewCuckooHashTableGivenLogSize(5)
+	ht := cuckoo.NewCuckooHashTableGivenLogSize(14)
 	for i := 1; i < 100; i++ {
 		if ht.Insert(uint64(i)) == false {
 			log.Printf("Failed to insert cuckoo hash table at %v", i) 

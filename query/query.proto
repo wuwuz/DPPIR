@@ -8,6 +8,8 @@ service QueryService {
     //rpc QueryDatabase (SimpleQuery) returns (QueryResponse) {}
     rpc SingleQuery (CuckooBucketQuery) returns (CuckooBucketResponse) {}
     rpc ContinuousQuery (stream CuckooBucketQuery) returns (stream CuckooBucketResponse) {}
+
+    rpc GetHashTableInfo (HashTableInfoQuery) returns (HashTableInfoResponse) {}
 }
 
 message SimpleQuery {
@@ -24,4 +26,13 @@ message CuckooBucketQuery {
 
 message CuckooBucketResponse {
     repeated uint64 Bucket = 1;
+}
+
+message HashTableInfoQuery {
+    uint64 Dummy = 1;
+}
+
+message HashTableInfoResponse {
+    uint64 Size = 1;
+    uint64 Load = 2;
 }

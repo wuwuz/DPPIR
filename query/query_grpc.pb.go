@@ -25,6 +25,7 @@ type QueryServiceClient interface {
 	//rpc QueryDatabase (SimpleQuery) returns (QueryResponse) {}
 	SingleQuery(ctx context.Context, in *CuckooBucketQuery, opts ...grpc.CallOption) (*CuckooBucketResponse, error)
 	ContinuousQuery(ctx context.Context, opts ...grpc.CallOption) (QueryService_ContinuousQueryClient, error)
+	GetHashTableInfo(ctx context.Context, in *HashTableInfoQuery, opts ...grpc.CallOption) (*HashTableInfoResponse, error)
 }
 
 type queryServiceClient struct {
@@ -75,6 +76,15 @@ func (x *queryServiceContinuousQueryClient) Recv() (*CuckooBucketResponse, error
 	return m, nil
 }
 
+func (c *queryServiceClient) GetHashTableInfo(ctx context.Context, in *HashTableInfoQuery, opts ...grpc.CallOption) (*HashTableInfoResponse, error) {
+	out := new(HashTableInfoResponse)
+	err := c.cc.Invoke(ctx, "/query.QueryService/GetHashTableInfo", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // QueryServiceServer is the server API for QueryService service.
 // All implementations must embed UnimplementedQueryServiceServer
 // for forward compatibility
@@ -82,6 +92,7 @@ type QueryServiceServer interface {
 	//rpc QueryDatabase (SimpleQuery) returns (QueryResponse) {}
 	SingleQuery(context.Context, *CuckooBucketQuery) (*CuckooBucketResponse, error)
 	ContinuousQuery(QueryService_ContinuousQueryServer) error
+	GetHashTableInfo(context.Context, *HashTableInfoQuery) (*HashTableInfoResponse, error)
 	mustEmbedUnimplementedQueryServiceServer()
 }
 
@@ -94,6 +105,9 @@ func (UnimplementedQueryServiceServer) SingleQuery(context.Context, *CuckooBucke
 }
 func (UnimplementedQueryServiceServer) ContinuousQuery(QueryService_ContinuousQueryServer) error {
 	return status.Errorf(codes.Unimplemented, "method ContinuousQuery not implemented")
+}
+func (UnimplementedQueryServiceServer) GetHashTableInfo(context.Context, *HashTableInfoQuery) (*HashTableInfoResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetHashTableInfo not implemented")
 }
 func (UnimplementedQueryServiceServer) mustEmbedUnimplementedQueryServiceServer() {}
 
@@ -152,6 +166,24 @@ func (x *queryServiceContinuousQueryServer) Recv() (*CuckooBucketQuery, error) {
 	return m, nil
 }
 
+func _QueryService_GetHashTableInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(HashTableInfoQuery)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QueryServiceServer).GetHashTableInfo(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/query.QueryService/GetHashTableInfo",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QueryServiceServer).GetHashTableInfo(ctx, req.(*HashTableInfoQuery))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // QueryService_ServiceDesc is the grpc.ServiceDesc for QueryService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -162,6 +194,10 @@ var QueryService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SingleQuery",
 			Handler:    _QueryService_SingleQuery_Handler,
+		},
+		{
+			MethodName: "GetHashTableInfo",
+			Handler:    _QueryService_GetHashTableInfo_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
