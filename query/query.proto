@@ -7,7 +7,7 @@ option go_package = "example.com/query";
 service QueryService {
     //rpc QueryDatabase (SimpleQuery) returns (QueryResponse) {}
     rpc SingleQuery (CuckooBucketQuery) returns (CuckooBucketResponse) {}
-    rpc ContinuousQuery (stream CuckooBucketQuery) returns (stream CuckooBucketResponse) {}
+    rpc ContinuousQuery (stream BatchedCuckooBucketQuery) returns (stream BatchedCuckooBucketResponse) {}
 
     rpc GetHashTableInfo (HashTableInfoQuery) returns (HashTableInfoResponse) {}
 }
@@ -21,13 +21,35 @@ message QueryResponse {
 }
 
 message CuckooBucketQuery {
-    uint64 QueryNum = 1;
-    repeated uint64 BucketId = 2;
+    //uint64 QueryNum = 1;
+    uint64 BucketId = 1;
+    uint64 UniqueId = 2;
+    //repeated uint64 OneTimePad = 3;
+
+    uint64 OneTimePad_0 = 3;
+    uint64 OneTimePad_1 = 4;
+    uint64 OneTimePad_2 = 5;
+    uint64 OneTimePad_3 = 6;
 }
 
 message CuckooBucketResponse {
+    //uint64 QueryNum = 1;
+    uint64 UniqueId = 1;
+
+    uint64 Bucket_0 = 3;
+    uint64 Bucket_1 = 4;
+    uint64 Bucket_2 = 5;
+    uint64 Bucket_3 = 6;
+}
+
+message BatchedCuckooBucketQuery {
+    uint64 QueryNum = 1;
+    repeated CuckooBucketQuery BatchedQuery = 2;
+}
+
+message BatchedCuckooBucketResponse {
     uint64 ResponseNum = 1;
-    repeated uint64 PackedBucket = 2;
+    repeated CuckooBucketResponse BatchedResponse = 2;
 }
 
 message HashTableInfoQuery {

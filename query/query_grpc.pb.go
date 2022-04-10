@@ -55,8 +55,8 @@ func (c *queryServiceClient) ContinuousQuery(ctx context.Context, opts ...grpc.C
 }
 
 type QueryService_ContinuousQueryClient interface {
-	Send(*CuckooBucketQuery) error
-	Recv() (*CuckooBucketResponse, error)
+	Send(*BatchedCuckooBucketQuery) error
+	Recv() (*BatchedCuckooBucketResponse, error)
 	grpc.ClientStream
 }
 
@@ -64,12 +64,12 @@ type queryServiceContinuousQueryClient struct {
 	grpc.ClientStream
 }
 
-func (x *queryServiceContinuousQueryClient) Send(m *CuckooBucketQuery) error {
+func (x *queryServiceContinuousQueryClient) Send(m *BatchedCuckooBucketQuery) error {
 	return x.ClientStream.SendMsg(m)
 }
 
-func (x *queryServiceContinuousQueryClient) Recv() (*CuckooBucketResponse, error) {
-	m := new(CuckooBucketResponse)
+func (x *queryServiceContinuousQueryClient) Recv() (*BatchedCuckooBucketResponse, error) {
+	m := new(BatchedCuckooBucketResponse)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
@@ -145,8 +145,8 @@ func _QueryService_ContinuousQuery_Handler(srv interface{}, stream grpc.ServerSt
 }
 
 type QueryService_ContinuousQueryServer interface {
-	Send(*CuckooBucketResponse) error
-	Recv() (*CuckooBucketQuery, error)
+	Send(*BatchedCuckooBucketResponse) error
+	Recv() (*BatchedCuckooBucketQuery, error)
 	grpc.ServerStream
 }
 
@@ -154,12 +154,12 @@ type queryServiceContinuousQueryServer struct {
 	grpc.ServerStream
 }
 
-func (x *queryServiceContinuousQueryServer) Send(m *CuckooBucketResponse) error {
+func (x *queryServiceContinuousQueryServer) Send(m *BatchedCuckooBucketResponse) error {
 	return x.ServerStream.SendMsg(m)
 }
 
-func (x *queryServiceContinuousQueryServer) Recv() (*CuckooBucketQuery, error) {
-	m := new(CuckooBucketQuery)
+func (x *queryServiceContinuousQueryServer) Recv() (*BatchedCuckooBucketQuery, error) {
+	m := new(BatchedCuckooBucketQuery)
 	if err := x.ServerStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
