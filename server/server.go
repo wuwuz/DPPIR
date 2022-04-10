@@ -21,6 +21,17 @@ type QueryServiceServer struct {
 }
 
 func (s *QueryServiceServer) SingleQuery(ctx context.Context, in *pb.CuckooBucketQuery) (*pb.CuckooBucketResponse, error) {
+	subBatchSize := in.GetQueryNum()
+	bucketIds := in.GetBucketId()
+	buckets := make([]uint64, 0, subBatchSize * cuckoo.BucketSize)
+	for i := uint64(0); i < subBatchSize; i++ {
+		bucket := s.HashTable.GetBucketCopy(bucketIds[i])
+		buckets = append(buckets, bucket.Slot[0:4]...)
+	}
+	//bucket := s.HashTable.GetBucketCopy(bucketId)
+	var ret = pb.CuckooBucketResponse{ResponseNum: subBatchSize, PackedBucket: buckets}
+
+	/*
 	bucketId := in.GetBucketId()
 	bucket := s.HashTable.GetBucketCopy(bucketId)
 
@@ -28,6 +39,7 @@ func (s *QueryServiceServer) SingleQuery(ctx context.Context, in *pb.CuckooBucke
 	//log.Printf("Received: %v", id)
 	//var ret int32 = (*s.Database)[id]
 	var ret = pb.CuckooBucketResponse{Bucket: bucket.Slot[0:4]}
+	*/
 	return &ret, nil;
 	//return &pb.QueryResponse{Value: ret}, nil;
 }
@@ -41,9 +53,15 @@ func (s *QueryServiceServer) ContinuousQuery(stream pb.QueryService_ContinuousQu
 		if err != nil {
 			return err
 		}
-		bucketId := request.GetBucketId()
-		bucket := s.HashTable.GetBucketCopy(bucketId)
-		var ret = pb.CuckooBucketResponse{Bucket: bucket.Slot[0:4]}
+		subBatchSize := request.GetQueryNum()
+		bucketIds := request.GetBucketId()
+		buckets := make([]uint64, 0, subBatchSize * cuckoo.BucketSize)
+		for i := uint64(0); i < subBatchSize; i++ {
+			bucket := s.HashTable.GetBucketCopy(bucketIds[i])
+			buckets = append(buckets, bucket.Slot[0:4]...)
+		}
+		//bucket := s.HashTable.GetBucketCopy(bucketId)
+		var ret = pb.CuckooBucketResponse{ResponseNum: subBatchSize, PackedBucket: buckets}
 
 		if err := stream.Send(&ret); err != nil {
 			return err
@@ -72,7 +90,7 @@ func main() {
 	//	db[i] = i * 10
 //	}
 
-	ht := cuckoo.NewCuckooHashTableGivenLogSize(14)
+	ht := cuckoo.NewCuckooHashTableGivenLogSize(15)
 	for i := 1; i < 100; i++ {
 		if ht.Insert(uint64(i)) == false {
 			log.Printf("Failed to insert cuckoo hash table at %v", i) 

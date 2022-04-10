@@ -21,11 +21,13 @@ message QueryResponse {
 }
 
 message CuckooBucketQuery {
-    uint64 BucketId = 1;
+    uint64 QueryNum = 1;
+    repeated uint64 BucketId = 2;
 }
 
 message CuckooBucketResponse {
-    repeated uint64 Bucket = 1;
+    uint64 ResponseNum = 1;
+    repeated uint64 PackedBucket = 2;
 }
 
 message HashTableInfoQuery {

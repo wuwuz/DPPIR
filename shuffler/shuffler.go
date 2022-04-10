@@ -15,9 +15,12 @@ import (
 )
 
 const (
+	//address = "localhost:50051"
+	//address = "10.108.0.3:50051"
 	address = "localhost:50051"
 	eps = 0.5
 	delta = 1e-6
+	subBatchSize = 100
 )
 
 var paddingNum int
@@ -34,7 +37,7 @@ func calcLaplacePadding(eps float64, delta float64) int {
 }
 
 func runContinuousQuery(client pb.QueryServiceClient) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2 * time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 1 * time.Second)
 	defer cancel()
 
 	stream, _ := client.ContinuousQuery(ctx)
@@ -53,12 +56,12 @@ func runContinuousQuery(client pb.QueryServiceClient) {
 			if err != nil {
 				log.Fatalf("Failed to receive a response %v", err)
 			}
-			cnt += 1
+			cnt += int(in.ResponseNum)
 			if cnt % 10000 == 0 {
 				//log.Printf("Got message %s at point(%d, %d)", in.Message, in.Location.Latitude, in.Location.Longitude)
 				log.Printf("Got %v-th bucket: ", cnt)
 				for i := 0; i < 1; i++ {
-					log.Printf("%v ", in.Bucket[i])
+					log.Printf("%v ", in.PackedBucket[i])
 				}
 			}
 		}
@@ -66,14 +69,16 @@ func runContinuousQuery(client pb.QueryServiceClient) {
 
 	//timer set
 	// generate some real queries and put them into a hash table
-	queryBuffer := make([]pb.CuckooBucketQuery, 0, 200000)
+	queryBuffer := make([]uint64, 0, 200000)
 	for i := 0; i < 10000; i++ {
 		h1, h2 := cuckoo.GetTwoHash(uint64(i));
 		h1 = h1 % hashTableSize;
 		h2 = h2 % hashTableSize;
 
-		queryBuffer = append(queryBuffer, pb.CuckooBucketQuery{BucketId: h1})
-		queryBuffer = append(queryBuffer, pb.CuckooBucketQuery{BucketId: h2})
+		//queryBuffer = append(queryBuffer, pb.CuckooBucketQuery{BucketId: h1})
+		//queryBuffer = append(queryBuffer, pb.CuckooBucketQuery{BucketId: h2})
+		queryBuffer = append(queryBuffer, h1)
+		queryBuffer = append(queryBuffer, h2)
 	}
 
 	LaplaceDist := distuv.Laplace{Mu: 0, Scale: 1.0 / eps, Src: rand.NewSource(100)}
@@ -89,7 +94,8 @@ func runContinuousQuery(client pb.QueryServiceClient) {
 		//fakeQueryNum = max(fakeQueryNum, 0)
 		for j := 0; j < fakeQueryNum; j++ {
 			//fakeQuery := UniformDist.Uint64() % hashTableSize;
-			queryBuffer = append(queryBuffer, pb.CuckooBucketQuery{BucketId: i})
+			//queryBuffer = append(queryBuffer, pb.CuckooBucketQuery{BucketId: i})
+			queryBuffer = append(queryBuffer, uint64(i))
 		}
 	}
 
@@ -101,6 +107,22 @@ func runContinuousQuery(client pb.QueryServiceClient) {
 	})
 
 	cnt := 0
+	for i := 0; i < len(queryBuffer); i += subBatchSize {
+		q := make([]uint64, 0, subBatchSize)
+		j := i
+		for ; j < i + subBatchSize && j < len(queryBuffer); j++ {
+			q = append(q, queryBuffer[j])
+		}
+		currentSubBatchSize := j - i
+		cnt += currentSubBatchSize
+		if err := stream.Send(&pb.CuckooBucketQuery{
+			QueryNum: uint64(currentSubBatchSize),
+			BucketId: q,
+			}); err != nil {
+			log.Fatalf("Failed to send a query at %v-th package: %v", cnt, err)
+		}
+	}
+	/*
 	for _, q := range queryBuffer {
 		//var q = pb.CuckooBucketQuery{BucketId: uint64(i % 10)}
 		cnt += 1
@@ -108,6 +130,7 @@ func runContinuousQuery(client pb.QueryServiceClient) {
 			log.Fatalf("Failed to send a query at %v-th package: %v", cnt, err)
 		}
 	}
+	*/
 
 	/*
 	for i := 0; i < 10000000; i++ {
@@ -127,16 +150,19 @@ func runSingleQuery(client pb.QueryServiceClient) {
 	defer cancel()
 
 	for i := 0; i < 1000000; i++ {
-		bucket, err := client.SingleQuery(ctx, &pb.CuckooBucketQuery{BucketId: uint64(i % 10)})
+		//bucket, err := client.SingleQuery(ctx, &pb.CuckooBucketQuery{QueryNum: 1, BucketId: [uint64(i % 10)]})
+		_, err := client.SingleQuery(ctx, &pb.CuckooBucketQuery{QueryNum: 1, BucketId: []uint64{uint64(i % 10)}})
 
 		if err != nil {
 			log.Fatalf("failed to query %v", err)
 		}
 		if i % 1000 == 0 {
 			log.Printf("Got %v-th bucket: ", i)
+			/*
 			for j := 0; j < 1; j++ {
 				log.Printf("%v ", bucket.Bucket[j])
 			}
+			*/
 		}
 		/*
 		log.Printf("Return Value %v", r.GetValue())
