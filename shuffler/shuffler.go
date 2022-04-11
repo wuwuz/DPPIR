@@ -17,8 +17,8 @@ import (
 
 const (
 	//address = "localhost:50051"
-	//address = "10.108.0.3:50051"
-	address      = "localhost:50051"
+	address = "10.108.0.3:50051"
+	//address      = "localhost:50051"
 	eps          = 1
 	delta        = 1e-6
 	subBatchSize = 1000
@@ -38,17 +38,17 @@ func calcLaplacePadding(eps float64, delta float64) int {
 }
 
 func createSingleQuery(bucketId uint64, rng *rand.Rand) *pb.CuckooBucketQuery {
-	//uniqueId := rng.Uint64()
-	uniqueId := uint64(0)
+	uniqueId := rng.Uint64()
+	//uniqueId := uint64(0)
 	//oneTimePad := []uint64{rng.Uint64(), rng.Uint64(), rng.Uint64(), rng.Uint64()}
-	//oneTimePad_0 := rng.Uint64()
-	//oneTimePad_1 := rng.Uint64()
-	//oneTimePad_2 := rng.Uint64()
-	//oneTimePad_3 := rng.Uint64()
-	oneTimePad_0 := uint64(0)
-	oneTimePad_1 := uint64(0)
-	oneTimePad_2 := uint64(0)
-	oneTimePad_3 := uint64(0)
+	oneTimePad_0 := rng.Uint64()
+	oneTimePad_1 := rng.Uint64()
+	oneTimePad_2 := rng.Uint64()
+	oneTimePad_3 := rng.Uint64()
+	//oneTimePad_0 := uint64(0)
+	//oneTimePad_1 := uint64(0)
+	//oneTimePad_2 := uint64(0)
+	//oneTimePad_3 := uint64(0)
 	/*
 		for i := 0; i < cuckoo.BucketSize; i++ {
 			oneTimePad[i] = rng.Uint64()
@@ -65,7 +65,7 @@ func createSingleQuery(bucketId uint64, rng *rand.Rand) *pb.CuckooBucketQuery {
 }
 
 func runContinuousQuery(client pb.QueryServiceClient) {
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(2000*time.Millisecond))
 	defer cancel()
 
 	stream, _ := client.ContinuousQuery(ctx)
@@ -100,7 +100,8 @@ func runContinuousQuery(client pb.QueryServiceClient) {
 	rng := rand.New(rand.NewSource(101))
 
 	queryBuffer := make([]*pb.CuckooBucketQuery, 0, 1000000)
-	for i := 0; i < 1000; i++ {
+
+	for i := 0; i < 100000; i++ {
 		h1, h2 := cuckoo.GetTwoHash(uint64(i))
 		h1 = h1 % hashTableSize
 		h2 = h2 % hashTableSize
