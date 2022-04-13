@@ -100,7 +100,7 @@ func main() {
 	//	}
 
 	ht := cuckoo.NewCuckooHashTableGivenLogSize(15)
-	for i := 1; i < 100; i++ {
+	for i := 1; i < 100000; i++ {
 		if ht.Insert(uint64(i)) == false {
 			log.Printf("Failed to insert cuckoo hash table at %v", i)
 		}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log"
+	"sync"
 	"time"
 
 	pb "example.com/query"
@@ -16,12 +17,12 @@ import (
 )
 
 const (
-	//address = "localhost:50051"
-	address = "10.108.0.3:50051"
+	address = "localhost:50051"
+	//address = "10.108.0.3:50051"
 	//address      = "localhost:50051"
 	eps          = 1
 	delta        = 1e-6
-	subBatchSize = 1000
+	subBatchSize = 100
 )
 
 var paddingNum int
@@ -64,102 +65,181 @@ func createSingleQuery(bucketId uint64, rng *rand.Rand) *pb.CuckooBucketQuery {
 	}
 }
 
+type RealQuery struct {
+	Item          uint64
+	Result        bool
+	BucketQuery_0 pb.CuckooBucketQuery
+	BucketQuery_1 pb.CuckooBucketQuery
+}
+
+func handleSingleResponse(in *pb.CuckooBucketResponse, queryUniqueIdToRealQuery *map[uint64]*RealQuery) {
+	uniqueId := in.UniqueId
+	if realQuery, ok := (*queryUniqueIdToRealQuery)[uniqueId]; ok {
+		var matchedBucketQuery *pb.CuckooBucketQuery
+		if realQuery.BucketQuery_0.UniqueId == uniqueId {
+			matchedBucketQuery = &realQuery.BucketQuery_0
+		} else {
+			//if realQuery.BucketQuery_1.UniqueId == uniqueId {
+			matchedBucketQuery = &realQuery.BucketQuery_1
+		}
+		/*
+			if realQuery.Item == 40000 {
+				log.Printf("now item = %v ---------------------", realQuery.Item)
+			}
+		*/
+
+		if matchedBucketQuery.OneTimePad_0^in.Bucket_0 == realQuery.Item ||
+			matchedBucketQuery.OneTimePad_1^in.Bucket_1 == realQuery.Item ||
+			matchedBucketQuery.OneTimePad_2^in.Bucket_2 == realQuery.Item ||
+			matchedBucketQuery.OneTimePad_3^in.Bucket_3 == realQuery.Item {
+
+			if realQuery.Item == 40000 {
+				log.Printf("true item = %v -------------------", realQuery.Item)
+			}
+			realQuery.Result = true
+		}
+	} else {
+		// it's a fake query and its unique id has no registration
+		return
+	}
+}
+
 func runContinuousQuery(client pb.QueryServiceClient) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(2000*time.Millisecond))
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(10000*time.Millisecond))
 	defer cancel()
 
 	stream, _ := client.ContinuousQuery(ctx)
 
-	waitc := make(chan struct{})
+	startTime := time.Now()
+
+	queryUniqueIdToRealQuery := make(map[uint64]*RealQuery)
+	realQueryBuffer := make([]RealQuery, 0, 200000)
+
+	//waitc := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(2)
 	go func() {
+		defer wg.Done()
 		cnt := 0
 		for {
 			in, err := stream.Recv()
 			if err == io.EOF {
 				// read done.
-				close(waitc)
+				//close(waitc)
 				log.Printf("received response cnt %v", cnt)
+				//log.Printf("received response cnt %v", cnt)
+				log.Printf("real query buffer size %v", len(realQueryBuffer))
+				for _, realQuery := range realQueryBuffer {
+					if realQuery.Item%uint64(1000) == 0 {
+						log.Printf("Item: %v, Result: %v", realQuery.Item, realQuery.Result)
+					}
+				}
 				return
 			}
 			if err != nil {
 				log.Fatalf("Failed to receive a response %v", err)
 			}
 			cnt += int(in.ResponseNum)
-			if cnt%10000 == 0 {
+			if cnt%(1000*subBatchSize) == 0 {
 				//log.Printf("Got message %s at point(%d, %d)", in.Message, in.Location.Latitude, in.Location.Longitude)
 				log.Printf("Got %v-th bucket: ", cnt)
 				//for i := 0; i < 1; i++ {
 				//	log.Printf("%v ", in.PackedBucket[i])
 				//	}
 			}
+
+			for i := 0; i < int(in.ResponseNum); i++ {
+				handleSingleResponse(in.BatchedResponse[i], &queryUniqueIdToRealQuery)
+			}
 		}
 	}()
 
 	//timer set
 	// generate some real queries and put them into a hash table
-	rng := rand.New(rand.NewSource(101))
 
-	queryBuffer := make([]*pb.CuckooBucketQuery, 0, 1000000)
+	go func() {
+		defer wg.Done()
+		rng := rand.New(rand.NewSource(101))
 
-	for i := 0; i < 100000; i++ {
-		h1, h2 := cuckoo.GetTwoHash(uint64(i))
-		h1 = h1 % hashTableSize
-		h2 = h2 % hashTableSize
+		queryBuffer := make([]*pb.CuckooBucketQuery, 0, 1000000)
 
-		//queryBuffer = append(queryBuffer, pb.CuckooBucketQuery{BucketId: h1})
-		//queryBuffer = append(queryBuffer, pb.CuckooBucketQuery{BucketId: h2})
-		queryBuffer = append(queryBuffer, createSingleQuery(h1, rng))
-		queryBuffer = append(queryBuffer, createSingleQuery(h2, rng))
-	}
+		for i := 100000 - 50000; i < 100000+50000; i++ {
+			//for i := 100000 - 10; i < 100000; i++ {
+			item := i
+			h0, h1 := cuckoo.GetTwoHash(uint64(item))
+			h0 = h0 % hashTableSize
+			h1 = h1 % hashTableSize
 
-	LaplaceDist := distuv.Laplace{Mu: 0, Scale: 1.0 / eps, Src: rand.NewSource(100)}
+			realQueryBuffer = append(realQueryBuffer, RealQuery{
+				Item:          uint64(item),
+				Result:        false,
+				BucketQuery_0: *createSingleQuery(h0, rng),
+				BucketQuery_1: *createSingleQuery(h1, rng),
+			})
 
-	log.Printf("padding num %v", paddingNum)
+			currentQuery := &realQueryBuffer[len(realQueryBuffer)-1] // the current one
 
-	for i := uint64(0); i < hashTableSize; i++ {
-		fakeQueryNum := int(LaplaceDist.Rand() + float64(paddingNum))
-		if fakeQueryNum < 0 {
-			fakeQueryNum = 0
+			queryUniqueIdToRealQuery[currentQuery.BucketQuery_0.UniqueId] = currentQuery
+			queryUniqueIdToRealQuery[currentQuery.BucketQuery_1.UniqueId] = currentQuery
+
+			//queryBuffer = append(queryBuffer, pb.CuckooBucketQuery{BucketId: h1})
+			//queryBuffer = append(queryBuffer, pb.CuckooBucketQuery{BucketId: h2})
+			queryBuffer = append(queryBuffer, &currentQuery.BucketQuery_0)
+			queryBuffer = append(queryBuffer, &currentQuery.BucketQuery_1)
 		}
-		//fakeQueryNum = max(fakeQueryNum, 0)
-		for j := 0; j < fakeQueryNum; j++ {
-			//fakeQuery := UniformDist.Uint64() % hashTableSize;
-			//queryBuffer = append(queryBuffer, pb.CuckooBucketQuery{BucketId: i})
-			queryBuffer = append(queryBuffer, createSingleQuery(i, rng))
-		}
-	}
 
-	log.Printf("In total : %v packages", len(queryBuffer))
+		LaplaceDist := distuv.Laplace{Mu: 0, Scale: 1.0 / eps, Src: rand.NewSource(100)}
 
-	rand.Seed(uint64(time.Now().UnixNano()))
-	rand.Shuffle(len(queryBuffer), func(i, j int) {
-		queryBuffer[i], queryBuffer[j] = queryBuffer[j], queryBuffer[i]
-	})
-
-	cnt := 0
-	for i := 0; i < len(queryBuffer); i += subBatchSize {
-		j := i + subBatchSize
-		if j >= len(queryBuffer) {
-			j = len(queryBuffer) - 1
-		}
-		/*
-			for ; j < i+subBatchSize && j < len(queryBuffer); j++ {
-				q = append(q, queryBuffer[j])
+		log.Printf("padding num %v", paddingNum)
+		for i := uint64(0); i < hashTableSize; i++ {
+			//for i := uint64(0); i < uint64(0); i++ {
+			fakeQueryNum := int(LaplaceDist.Rand() + float64(paddingNum))
+			if fakeQueryNum < 0 {
+				fakeQueryNum = 0
 			}
-		*/
-		currentSubBatchSize := j - i
-		cnt += currentSubBatchSize
-		if err := stream.Send(&pb.BatchedCuckooBucketQuery{
-			QueryNum:     uint64(currentSubBatchSize),
-			BatchedQuery: queryBuffer[i:j],
-		}); err != nil {
-			log.Fatalf("Failed to send a query at %v-th package: %v", cnt, err)
+			//fakeQueryNum = max(fakeQueryNum, 0)
+			for j := 0; j < fakeQueryNum; j++ {
+				//fakeQuery := UniformDist.Uint64() % hashTableSize;
+				//queryBuffer = append(queryBuffer, pb.CuckooBucketQuery{BucketId: i})
+				queryBuffer = append(queryBuffer, createSingleQuery(i, rng))
+			}
 		}
 
-		if cnt%(100*subBatchSize) == 0 {
-			log.Printf("Sent a query at %v-th package", cnt)
+		log.Printf("In total : %v packages", len(queryBuffer))
+
+		rand.Seed(uint64(time.Now().UnixNano()))
+		/*
+			rand.Shuffle(len(queryBuffer), func(i, j int) {
+				queryBuffer[i], queryBuffer[j] = queryBuffer[j], queryBuffer[i]
+			})
+		*/
+
+		cnt := 0
+		for i := 0; i < len(queryBuffer); i += subBatchSize {
+			j := i + subBatchSize
+			if j > len(queryBuffer) {
+				j = len(queryBuffer)
+			}
+			/*
+				for ; j < i+subBatchSize && j < len(queryBuffer); j++ {
+					q = append(q, queryBuffer[j])
+				}
+			*/
+			currentSubBatchSize := j - i
+			cnt += currentSubBatchSize
+			if err := stream.Send(&pb.BatchedCuckooBucketQuery{
+				QueryNum:     uint64(currentSubBatchSize),
+				BatchedQuery: queryBuffer[i:j],
+			}); err != nil {
+				log.Fatalf("Failed to send a query at %v-th package: %v", cnt, err)
+			}
+
+			if cnt%(1000*subBatchSize) == 0 {
+				log.Printf("Sent a query at %v-th package", cnt)
+			}
 		}
-	}
+		stream.CloseSend()
+	}()
 	/*
 		for _, q := range queryBuffer {
 			//var q = pb.CuckooBucketQuery{BucketId: uint64(i % 10)}
@@ -178,8 +258,11 @@ func runContinuousQuery(client pb.QueryServiceClient) {
 			}
 		}
 	*/
-	stream.CloseSend()
-	<-waitc
+	//<-waitc
+	wg.Wait()
+
+	duration := time.Since(startTime)
+	log.Printf("Total time = %v ms", duration.Milliseconds())
 }
 
 func runSingleQuery(client pb.QueryServiceClient) {

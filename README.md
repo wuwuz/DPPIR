@@ -17,5 +17,5 @@ go run server/server.go
 In another command line session:
 
 ```
-go run client/client.go
+go run shuffler/shuffler.go
 ```
