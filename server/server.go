@@ -1,10 +1,14 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"io"
 	"log"
 	"net"
+	"os"
+	"strconv"
+	"strings"
 
 	"example.com/cuckoo"
 	pb "example.com/query"
@@ -14,6 +18,11 @@ import (
 const (
 	port = ":50051"
 )
+
+var eps float64
+var delta float64
+var listSize uint64
+var realQueryNum uint64
 
 type QueryServiceServer struct {
 	pb.UnimplementedQueryServiceServer
@@ -86,7 +95,46 @@ func (s *QueryServiceServer) GetHashTableInfo(ctx context.Context, in *pb.HashTa
 	//return &pb.QueryResponse{Value: ret}, nil;
 }
 
+func readConfigInfo() (float64, float64, uint64, uint64) {
+	file, err := os.Open("/root/DPPIR/config.txt")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+
+	reader := bufio.NewReader(file)
+	// optionally, resize scanner's capacity for lines over 64K, see next example
+	line, _, err := reader.ReadLine()
+	if err != nil {
+		log.Fatal(err)
+	}
+	split := strings.Split(string(line), " ")
+	var eps float64
+	var delta float64
+	var listSize int64
+	var queryNum int64
+
+	if eps, err = strconv.ParseFloat(split[0], 64); err != nil {
+		log.Fatal(err)
+	}
+	if delta, err = strconv.ParseFloat(split[1], 64); err != nil {
+		log.Fatal(err)
+	}
+	if listSize, err = strconv.ParseInt(split[2], 10, 64); err != nil {
+		log.Fatal(err)
+	}
+	if queryNum, err = strconv.ParseInt(split[3], 10, 64); err != nil {
+		log.Fatal(err)
+	}
+
+	log.Printf("%v %v %v %v", eps, delta, listSize, queryNum)
+
+	return eps, delta, uint64(listSize), uint64(queryNum)
+}
+
 func main() {
+	eps, delta, listSize, realQueryNum = readConfigInfo()
+
 	lis, err := net.Listen("tcp", port)
 	if err != nil {
 		log.Fatalf("Failed to listen %v", err)
@@ -99,8 +147,9 @@ func main() {
 	//	db[i] = i * 10
 	//	}
 
-	ht := cuckoo.NewCuckooHashTableGivenLogSize(15)
-	for i := 1; i < 100000; i++ {
+	//ht := cuckoo.NewCuckooHashTableGivenLogSize(15)
+	ht := cuckoo.NewCuckooHashTable(listSize)
+	for i := uint64(1); i <= listSize; i++ {
 		if ht.Insert(uint64(i)) == false {
 			log.Printf("Failed to insert cuckoo hash table at %v", i)
 		}

@@ -1,9 +1,14 @@
 package main
 
 import (
+	"bufio"
 	"context"
+	"fmt"
 	"io"
 	"log"
+	"os"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -20,11 +25,15 @@ const (
 	address = "localhost:50051"
 	//address = "10.108.0.3:50051"
 	//address      = "localhost:50051"
-	eps          = 1
-	delta        = 1e-6
-	subBatchSize = 100
+	//eps          = 0.5
+	//delta        = 1e-6
+	subBatchSize = 40000
 )
 
+var eps float64
+var delta float64
+var listSize uint64
+var realQueryNum uint64
 var paddingNum int
 var hashTableSize uint64
 
@@ -115,6 +124,8 @@ func runContinuousQuery(client pb.QueryServiceClient) {
 	queryUniqueIdToRealQuery := make(map[uint64]*RealQuery)
 	realQueryBuffer := make([]RealQuery, 0, 200000)
 
+	totalReceivedResponse := 0
+
 	//waitc := make(chan struct{})
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -134,6 +145,8 @@ func runContinuousQuery(client pb.QueryServiceClient) {
 						log.Printf("Item: %v, Result: %v", realQuery.Item, realQuery.Result)
 					}
 				}
+
+				totalReceivedResponse = cnt
 				return
 			}
 			if err != nil {
@@ -163,7 +176,7 @@ func runContinuousQuery(client pb.QueryServiceClient) {
 
 		queryBuffer := make([]*pb.CuckooBucketQuery, 0, 1000000)
 
-		for i := 100000 - 50000; i < 100000+50000; i++ {
+		for i := uint64(1); i <= realQueryNum; i++ {
 			//for i := 100000 - 10; i < 100000; i++ {
 			item := i
 			h0, h1 := cuckoo.GetTwoHash(uint64(item))
@@ -226,6 +239,7 @@ func runContinuousQuery(client pb.QueryServiceClient) {
 				}
 			*/
 			currentSubBatchSize := j - i
+			log.Printf("%v current batch size", currentSubBatchSize)
 			cnt += currentSubBatchSize
 			if err := stream.Send(&pb.BatchedCuckooBucketQuery{
 				QueryNum:     uint64(currentSubBatchSize),
@@ -261,8 +275,28 @@ func runContinuousQuery(client pb.QueryServiceClient) {
 	//<-waitc
 	wg.Wait()
 
+	file, err := os.OpenFile("output.txt", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		fmt.Println("File does not exists or cannot be created")
+		os.Exit(1)
+	}
+	defer file.Close()
+
 	duration := time.Since(startTime)
 	log.Printf("Total time = %v ms", duration.Milliseconds())
+	w := bufio.NewWriter(file)
+
+	realQueryNum := len(realQueryBuffer)
+	batchTime := float64(duration.Milliseconds()) / 1000
+	throughput := float64(realQueryNum) / float64(batchTime)
+	overhead := float64(totalReceivedResponse)/float64(realQueryNum*2) - 1
+
+	fmt.Fprintf(w, "eps, delta, listSize, realQueryNum, batchTime(s), throughput(query/s), overheadRatio\n")
+	fmt.Fprintf(w, "%.2f, %.2f, %v, %v, %v, %.2f, %.2f\n",
+		eps, delta, listSize, realQueryNum, batchTime, throughput, overhead,
+	)
+
+	w.Flush()
 }
 
 func runSingleQuery(client pb.QueryServiceClient) {
@@ -310,8 +344,46 @@ func runHashTableInfoQuery(client pb.QueryServiceClient) {
 	log.Printf("hash table size %v", in.Size)
 }
 
+func readConfigInfo() (float64, float64, uint64, uint64) {
+	file, err := os.Open("/root/DPPIR/config.txt")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+
+	reader := bufio.NewReader(file)
+	// optionally, resize scanner's capacity for lines over 64K, see next example
+	line, _, err := reader.ReadLine()
+	if err != nil {
+		log.Fatal(err)
+	}
+	split := strings.Split(string(line), " ")
+	var eps float64
+	var delta float64
+	var listSize int64
+	var queryNum int64
+
+	if eps, err = strconv.ParseFloat(split[0], 64); err != nil {
+		log.Fatal(err)
+	}
+	if delta, err = strconv.ParseFloat(split[1], 64); err != nil {
+		log.Fatal(err)
+	}
+	if listSize, err = strconv.ParseInt(split[2], 10, 64); err != nil {
+		log.Fatal(err)
+	}
+	if queryNum, err = strconv.ParseInt(split[3], 10, 64); err != nil {
+		log.Fatal(err)
+	}
+
+	log.Printf("%v %v %v %v", eps, delta, listSize, queryNum)
+
+	return eps, delta, uint64(listSize), uint64(queryNum)
+}
+
 func main() {
-	paddingNum = calcLaplacePadding(eps, delta)
+	eps, delta, listSize, realQueryNum = readConfigInfo()
+	paddingNum = calcLaplacePadding(eps/2.0, delta)
 
 	conn, err := grpc.Dial(address, grpc.WithInsecure(), grpc.WithBlock())
 	if err != nil {

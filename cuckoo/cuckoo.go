@@ -3,15 +3,16 @@ package cuckoo
 import (
 	"hash/fnv"
 	"log"
+
 	//////////////////"io"
+	"encoding/binary"
 	"math"
-	"encoding/binary"	
 )
 
 const (
-	BucketSize = 4
+	BucketSize        = 4
 	secondHashPadding = 0x71516198ffaa77
-	emptySlot = 0
+	emptySlot         = 0
 )
 
 type bucket struct {
@@ -19,7 +20,7 @@ type bucket struct {
 }
 
 type Cuckoo struct {
-	Size uint64
+	Size    uint64
 	Logsize uint64
 	Buckets []bucket
 
@@ -34,8 +35,8 @@ func NewCuckooHashTable(itemNum uint64) *Cuckoo {
 	logsize := uint64(math.Ceil(math.Log2(float64(itemNum / BucketSize * 10 / 9))))
 	size := uint64(1) << logsize
 
-	c := &Cuckoo {
-		Size: size,
+	c := &Cuckoo{
+		Size:    size,
 		Logsize: logsize,
 		Buckets: alloc(size),
 	}
@@ -47,8 +48,8 @@ func NewCuckooHashTableGivenLogSize(logsize uint64) *Cuckoo {
 	//logsize := uint64(math.Ceil(math.Log2(float64(itemNum / BucketSize * 10 / 9))))
 	size := uint64(1) << logsize
 
-	c := &Cuckoo {
-		Size: size,
+	c := &Cuckoo{
+		Size:    size,
 		Logsize: logsize,
 		Buckets: alloc(size),
 	}
@@ -87,7 +88,6 @@ func (c *Cuckoo) TryLookupInBucket(key uint64, bucketId uint64) bool {
 	return false
 }
 
-
 func (c *Cuckoo) Insert(key uint64) bool {
 	//key = DefaultHash(key)
 
@@ -109,8 +109,8 @@ func (c *Cuckoo) Insert(key uint64) bool {
 			c.Load += 1
 			return true
 		}
-		kicked_key := c.Buckets[h1].Slot[i % 4];
-		c.Buckets[h1].Slot[i % 4] = key
+		kicked_key := c.Buckets[h1].Slot[i%4]
+		c.Buckets[h1].Slot[i%4] = key
 		key = kicked_key
 
 		t1, t2 := GetTwoHash(key)
@@ -118,7 +118,7 @@ func (c *Cuckoo) Insert(key uint64) bool {
 		t2 = t2 % c.Size
 
 		if t1 == h1 {
-			// the next position is h1, and t1 
+			// the next position is h1, and t1
 			h1 = t2
 			h2 = t1
 		} else {
@@ -145,10 +145,10 @@ func (c *Cuckoo) Lookup(key uint64) bool {
 
 func (c *Cuckoo) PrintInfo() {
 	log.Printf(
-		"Cuckoo hash table: %v buckets, %v slots, %v load factor", 
+		"Cuckoo hash table: %v buckets, %v slots, %v load factor",
 		c.Size,
 		BucketSize,
-		float64(c.Load) / float64(BucketSize * c.Size))// / float64(BucketSize * c.size))
+		float64(c.Load)/float64(BucketSize*c.Size)) // / float64(BucketSize * c.size))
 }
 
 func (c *Cuckoo) GetBucketCopy(bucketId uint64) bucket {
