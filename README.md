@@ -19,3 +19,9 @@ In another command line session:
 ```
 go run shuffler/shuffler.go
 ```
+
+The config.txt format: 
+eps
+delta
+listSize
+queryNum

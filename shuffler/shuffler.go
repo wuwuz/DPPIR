@@ -22,8 +22,8 @@ import (
 )
 
 const (
-	address = "localhost:50051"
-	//address = "10.108.0.3:50051"
+	//address = "localhost:50051"
+	address = "10.108.0.3:50051"
 	//address      = "localhost:50051"
 	//eps          = 0.5
 	//delta        = 1e-6
@@ -36,6 +36,7 @@ var listSize uint64
 var realQueryNum uint64
 var paddingNum int
 var hashTableSize uint64
+var outputFile string
 
 func calcLaplacePadding(eps float64, delta float64) int {
 	LaplaceDist := distuv.Laplace{Mu: 0, Scale: 1.0 / eps, Src: rand.NewSource(100)}
@@ -114,7 +115,7 @@ func handleSingleResponse(in *pb.CuckooBucketResponse, queryUniqueIdToRealQuery 
 }
 
 func runContinuousQuery(client pb.QueryServiceClient) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(10000*time.Millisecond))
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(100000*time.Millisecond))
 	defer cancel()
 
 	stream, _ := client.ContinuousQuery(ctx)
@@ -122,7 +123,7 @@ func runContinuousQuery(client pb.QueryServiceClient) {
 	startTime := time.Now()
 
 	queryUniqueIdToRealQuery := make(map[uint64]*RealQuery)
-	realQueryBuffer := make([]RealQuery, 0, 200000)
+	realQueryBuffer := make([]RealQuery, 0, 2*realQueryNum+100)
 
 	totalReceivedResponse := 0
 
@@ -140,11 +141,11 @@ func runContinuousQuery(client pb.QueryServiceClient) {
 				log.Printf("received response cnt %v", cnt)
 				//log.Printf("received response cnt %v", cnt)
 				log.Printf("real query buffer size %v", len(realQueryBuffer))
-				for _, realQuery := range realQueryBuffer {
-					if realQuery.Item%uint64(1000) == 0 {
-						log.Printf("Item: %v, Result: %v", realQuery.Item, realQuery.Result)
-					}
-				}
+				//	for _, realQuery := range realQueryBuffer {
+				//if realQuery.Item%uint64(1000) == 0 {
+				//	log.Printf("Item: %v, Result: %v", realQuery.Item, realQuery.Result)
+				//}
+				//}
 
 				totalReceivedResponse = cnt
 				return
@@ -172,11 +173,11 @@ func runContinuousQuery(client pb.QueryServiceClient) {
 
 	go func() {
 		defer wg.Done()
-		rng := rand.New(rand.NewSource(101))
+		rng := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 
 		queryBuffer := make([]*pb.CuckooBucketQuery, 0, 1000000)
 
-		for i := uint64(1); i <= realQueryNum; i++ {
+		for i := uint64(1 + realQueryNum/2); i <= realQueryNum+realQueryNum/2; i++ {
 			//for i := 100000 - 10; i < 100000; i++ {
 			item := i
 			h0, h1 := cuckoo.GetTwoHash(uint64(item))
@@ -275,7 +276,7 @@ func runContinuousQuery(client pb.QueryServiceClient) {
 	//<-waitc
 	wg.Wait()
 
-	file, err := os.OpenFile("output.txt", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+	file, err := os.OpenFile(outputFile, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		fmt.Println("File does not exists or cannot be created")
 		os.Exit(1)
@@ -292,7 +293,7 @@ func runContinuousQuery(client pb.QueryServiceClient) {
 	overhead := float64(totalReceivedResponse)/float64(realQueryNum*2) - 1
 
 	fmt.Fprintf(w, "eps, delta, listSize, realQueryNum, batchTime(s), throughput(query/s), overheadRatio\n")
-	fmt.Fprintf(w, "%.2f, %.2f, %v, %v, %v, %.2f, %.2f\n",
+	fmt.Fprintf(w, "%.2f, %.7f, %v, %v, %v, %.2f, %.2f\n",
 		eps, delta, listSize, realQueryNum, batchTime, throughput, overhead,
 	)
 
@@ -344,7 +345,7 @@ func runHashTableInfoQuery(client pb.QueryServiceClient) {
 	log.Printf("hash table size %v", in.Size)
 }
 
-func readConfigInfo() (float64, float64, uint64, uint64) {
+func readConfigInfo() (float64, float64, uint64, uint64, string) {
 	file, err := os.Open("/root/DPPIR/config.txt")
 	if err != nil {
 		log.Fatal(err)
@@ -362,6 +363,7 @@ func readConfigInfo() (float64, float64, uint64, uint64) {
 	var delta float64
 	var listSize int64
 	var queryNum int64
+	var outputFile string
 
 	if eps, err = strconv.ParseFloat(split[0], 64); err != nil {
 		log.Fatal(err)
@@ -376,13 +378,15 @@ func readConfigInfo() (float64, float64, uint64, uint64) {
 		log.Fatal(err)
 	}
 
-	log.Printf("%v %v %v %v", eps, delta, listSize, queryNum)
+	outputFile = split[4]
 
-	return eps, delta, uint64(listSize), uint64(queryNum)
+	log.Printf("%v %v %v %v %v", eps, delta, listSize, queryNum, outputFile)
+
+	return eps, delta, uint64(listSize), uint64(queryNum), outputFile
 }
 
 func main() {
-	eps, delta, listSize, realQueryNum = readConfigInfo()
+	eps, delta, listSize, realQueryNum, outputFile = readConfigInfo()
 	paddingNum = calcLaplacePadding(eps/2.0, delta)
 
 	conn, err := grpc.Dial(address, grpc.WithInsecure(), grpc.WithBlock())
